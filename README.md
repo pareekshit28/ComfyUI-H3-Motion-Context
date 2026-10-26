@@ -1,5 +1,9 @@
 # H3 Motion Context
 
+This fork of [NikoDemon80/ComfyUI-H3-Motion-Context](https://github.com/NikoDemon80/ComfyUI-H3-Motion-Context)
+adds an optional `storage_root` field to H3 Save/Load Latent for persistent
+storage such as Runpod Network Volumes. Existing workflows keep their defaults.
+
 Chain MiniMax H3 clips so motion and sound keep going across the cut.
 
 Generate clip A. Feed its last frames and audio into this node. Generate
@@ -49,6 +53,16 @@ generates picture and sound together. See "Why the audio needed work"
 below if you care how.
 
 ## Install
+
+For this fork, clone into your ComfyUI installation:
+
+```bash
+cd /path/to/ComfyUI/custom_nodes
+git clone https://github.com/pareekshit28/ComfyUI-H3-Motion-Context.git
+```
+
+Replace an existing copy of this node pack rather than installing both:
+the fork intentionally keeps the same node IDs so existing workflows work.
 
 Drop the folder in `ComfyUI/custom_nodes/` and restart. At startup you'll
 just see:
@@ -146,8 +160,8 @@ and indexed loading skips them on purpose.
 
 You can also point the loader at a specific file when `clip_index` is
 greater than 0; the file is loaded and the index is ignored. Index 0
-never reads a file. Latent paths have to stay inside ComfyUI's output
-folder.
+never reads a file. Latent paths have to stay inside the selected storage
+root, which defaults to ComfyUI's output folder.
 
 By default the loader's output is only for `context_latent`. Don't wire
 it into a decode node. Turn on `stock_format` if you want a standard H3
@@ -179,8 +193,54 @@ that drive ComfyUI remotely and keep their own copy of every clip.
   `POST /upload/image`. Index 0 still loads nothing; above 0 that file is
   loaded. Paths that leave the input folder are refused.
 
-Workflows saved before `folder` existed load unchanged and keep reading
-from output.
+Workflows saved before `folder` or `storage_root` existed load unchanged
+and keep reading from output.
+
+#### Custom storage root / Runpod Serverless
+
+Both Save and Load have an optional **storage_root** field. Leave it empty
+to keep ComfyUI's normal directories. Set an absolute path to store only
+the H3 latent files elsewhere, without launch arguments, symlinks, or
+changing where ComfyUI saves videos and images.
+
+For a Runpod Network Volume mounted at `/runpod-volume`, set:
+
+| Node | Setting | Value |
+|---|---|---|
+| Save | `storage_root` | `/runpod-volume/h3_latents` |
+| Save | `filename_prefix` | `story_01/clip` |
+| Load | `storage_root` | `/runpod-volume/h3_latents` |
+| Load | `latent_path` | `story_01` |
+| Load | `folder` | `output` |
+| Load | `stock_format` | `false` |
+
+| Generating | Load `clip_index` | Save `clip_index` |
+|---|---:|---:|
+| Clip 1 | 0 | 1 |
+| Clip 2 | 1 | 2 |
+| Clip 3 | 2 | 3 |
+
+Save creates missing directories and writes both video and audio to
+`/runpod-volume/h3_latents/story_01/clip_00001.safetensors` for clip 1.
+The next job can load it on any worker mounting the **same volume**. Wait
+until the previous job finishes saving before submitting its continuation.
+Give each chain its own subfolder; concurrent jobs must not overwrite the
+same clip slot. The volume must be mounted and writable before generation.
+
+The root must be absolute. `filename_prefix` and `latent_path` are relative
+to it, or may be absolute paths already inside it. Parent traversal and
+symlinks that escape the chosen root are refused. With `folder: input`,
+the explicit root still applies, but Load accepts one named file rather
+than an indexed folder. Chain's **Clear latents** never deletes input-mode
+files. Chain's slot check and Clear use the Load node's root and folder.
+
+When a saved file is inside ComfyUI's output directory, history keeps the
+usual `outputs.<node>.latents` locator for `GET /view`. For an external
+root, history instead reports `outputs.<node>.latent_paths`, a list of
+absolute paths, and the node's STRING output still returns the saved path.
+External files cannot be fetched through stock `/view`: a serverless
+handler can read that path from the mounted volume or upload it to object
+storage. No extra HTTP file-serving endpoint is added.
 
 There's an older path for graphs with no latent: the previous clip's
 frames into `context_frames`, its decoded audio into `context_audio`, and
@@ -447,19 +507,21 @@ that config.
 
 ## Testing
 
-Six scripts, all runnable without ComfyUI or a GPU.
+The Python checks below run without ComfyUI or a GPU. The Chain request
+test uses Node.js and its built-in modules, with no npm dependencies.
 
 ```
 python tests/_mock_harness.py        # the layout checks against a fake stock model
 python tests/_node_smoke_test.py     # the node end to end, refs + save/load
 python tests/_probe_node_test.py     # the seam probe node, joins with known answers
+node tests/_chain_storage_test.mjs   # Chain sends storage_root/folder, including old graphs
 python tests/seam_probe.py A.flac B_untrimmed.flac    # is the join real continuation?
 python tests/level_step.py clip*.flac                 # does the level or room tone jump?
 python tests/freeze_detect.py clip*.mp4               # did a held shot render as a still?
 ```
 
-The first three print their checks and end with a pass line. The other
-three measure real output; `level_step` and `freeze_detect` take
+The first three Python scripts print their checks and end with a pass
+line. The other three Python scripts measure real output; `level_step` and `freeze_detect` take
 `--self-test` to check their own math on made-up data first, and
 `seam_probe`'s math is what `_probe_node_test.py` exercises.
 

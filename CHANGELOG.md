@@ -8,6 +8,23 @@ rejected any keyframe anchor other than the first or last frame. That
 landed in ComfyUI 0.34.0. Every release through 0.33.4 has the older
 layout. Each entry below says which of the two it works with.
 
+## Unreleased - fork: configurable latent storage
+
+- Save/Load Latent gain an optional, trailing `storage_root` field for an
+  absolute storage directory such as `/runpod-volume/h3_latents`. Blank
+  preserves ComfyUI's existing output/input roots and old widget positions.
+- Both video and audio remain in the same safetensors file. Indexed slots,
+  re-rolls, input-file loading and `stock_format` keep their behavior.
+- Path containment applies to the selected root for saving, loading and
+  clearing. Chain sends the Load node's root/folder to its HTTP helpers;
+  Clear never bulk-deletes files in input mode.
+- Files outside ComfyUI's output directory are reported in history as
+  `latent_paths`, rather than an invalid `/view` locator. The STRING output
+  still returns the full saved path.
+- Added CPU smoke coverage for custom-root roundtrips, cache keys, path
+  boundaries, legacy defaults and Chain routes, plus a Node.js test for
+  the frontend request payloads.
+
 ## 0.7.1 - 2026-10-17
 
 Requires ComfyUI 0.34.0 or newer. Use 0.3.1 on anything older.

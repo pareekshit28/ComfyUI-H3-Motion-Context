@@ -112,12 +112,20 @@ function loadPath(pair) {
   return (p == null || p === "") ? "h3_context" : p;
 }
 
+function loadStorage(pair) {
+  return {
+    latent_path: loadPath(pair),
+    storage_root: widgetValue(pair.load, "storage_root") || "",
+    folder: widgetValue(pair.load, "folder") || "output",
+  };
+}
+
 async function firstClipExists(pair) {
   try {
     const r = await api.fetchApi("/h3_motion_context/slot_exists", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ latent_path: loadPath(pair), clip_index: 1 }),
+      body: JSON.stringify({ ...loadStorage(pair), clip_index: 1 }),
     });
     if (!r.ok) return false;
     const j = await r.json();
@@ -132,7 +140,7 @@ async function clearLatents(pair) {
     const r = await api.fetchApi("/h3_motion_context/clear_latents", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ latent_path: loadPath(pair) }),
+      body: JSON.stringify(loadStorage(pair)),
     });
     if (!r.ok) return 0;
     const j = await r.json();

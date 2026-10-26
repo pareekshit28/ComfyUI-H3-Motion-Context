@@ -753,11 +753,181 @@ def main():
     # the new widget is optional and last, so saved graphs keep positions
     it = nodes.MiniMaxH3MotionContextLoadLatent.INPUT_TYPES()
     assert list(it["required"]) == ["latent_path", "clip_index"]
-    assert list(it["optional"]) == ["stock_format", "folder"]
+    assert list(it["optional"]) == ["stock_format", "folder", "storage_root"]
     assert it["optional"]["folder"][0] == ["output", "input"]
     assert it["optional"]["folder"][1]["default"] == "output"
+    assert it["optional"]["storage_root"][1]["default"] == ""
+    save_it = saver.INPUT_TYPES()
+    assert list(save_it["required"]) == ["latent", "filename_prefix", "clip_index"]
+    assert list(save_it["optional"]) == ["storage_root"]
+    assert save_it["optional"]["storage_root"][1]["default"] == ""
     print("input folder: uploaded file loads, index 0 loads nothing, "
           "escapes and outside paths refused")
+
+    # A mounted volume is independent of ComfyUI's output folder. Both
+    # streams survive a save in one run and a load in a fresh node instance.
+    with tempfile.TemporaryDirectory() as volume:
+        root = os.path.join(volume, "latents")  # Save creates it on demand
+        saved = saver.save(prevA, "story_01/clip", clip_index=1,
+                           storage_root=root)
+        path = saved["result"][0]
+        assert _same_file(path, os.path.join(root, "story_01",
+                                            "clip_00001.safetensors"))
+        assert saved["ui"] == {"latent_paths": [path]}, saved["ui"]
+        assert not os.path.exists(path + ".tmp")
+        fresh = nodes.MiniMaxH3MotionContextLoadLatent()
+        (external,) = fresh.load("story_01", clip_index=1, storage_root=root)
+        for got, want in zip(external["samples"], prevA["samples"].parts):
+            np.testing.assert_array_equal(got.a, want.a)
+        # Absolute paths inside the root are accepted too.
+        (by_file,) = fresh.load(path, clip_index=99, storage_root=root)
+        np.testing.assert_array_equal(by_file["samples"][1].a,
+                                      external["samples"][1].a)
+        # stock_format still reconstructs a nested AV pair.
+        nt = types.ModuleType("comfy.nested_tensor")
+        nt.NestedTensor = Nested
+        sys.modules["comfy.nested_tensor"] = nt
+        sys.modules["comfy"].nested_tensor = nt
+        (stock,) = fresh.load("story_01", 1, True, storage_root=root)
+        assert isinstance(stock["samples"], Nested)
+        for got, want in zip(stock["samples"].parts, prevA["samples"].parts):
+            np.testing.assert_array_equal(got.a, want.a)
+        # Re-rolls overwrite their own slot, and don't change the previous.
+        saver.save(prevA, "story_01/clip", 2, storage_root=root)
+        key_before = fresh.IS_CHANGED("story_01", 2, storage_root=root)
+        saver.save(prevB1, "story_01/clip", 2, storage_root=root)
+        rerolled = os.path.join(root, "story_01", "clip_00002.safetensors")
+        old_time = os.stat(rerolled).st_mtime_ns
+        os.utime(rerolled, ns=(old_time, old_time + 1000000000))
+        assert fresh.IS_CHANGED("story_01", 2, storage_root=root) != key_before
+        (still_first,) = fresh.load("story_01", 1, storage_root=root)
+        assert float(still_first["samples"][1].a[0, 0, 0, 0]) == 7.0
+        assert nodes._clip_slot_exists("story_01", 2, storage_root=root)
+        assert not nodes._clip_slot_exists("story_01", 3, storage_root=root)
+        auto1 = saver.save(prevA, "auto/clip", 0, storage_root=root)["result"][0]
+        auto2 = saver.save(prevA, "auto/clip", 0, storage_root=root)["result"][0]
+        assert auto1 != auto2 and auto1.endswith("_.safetensors")
+        # Identical relative names on two volumes cannot share a cache key.
+        other_root = os.path.join(volume, "other")
+        saver.save(prevB1, "story_01/clip", 1, storage_root=other_root)
+        assert fresh.IS_CHANGED("story_01", 1, storage_root=root) != \
+            fresh.IS_CHANGED("story_01", 1, storage_root=other_root)
+        # Zero never reads a file or touches even a nonexistent root.
+        missing = os.path.join(volume, "not_created")
+        assert fresh.load("story_01", 0, storage_root=missing) == (None,)
+        assert fresh.IS_CHANGED("story_01", 0, storage_root=missing) == "disabled"
+        try:
+            fresh.load("story_01", 1, storage_root=missing)
+        except FileNotFoundError:
+            pass
+        else:
+            raise AssertionError("missing custom file did not refuse")
+        assert not os.path.exists(missing)
+        # Input mode keeps its one-file behavior, with the explicit root.
+        (single,) = fresh.load("story_01/clip_00001.safetensors", 1,
+                               folder="input", storage_root=root)
+        np.testing.assert_array_equal(single["samples"][1].a,
+                                      external["samples"][1].a)
+        assert nodes._clear_clip_slots("story_01", root, "input") == 0
+        assert os.path.exists(path)
+        # Paths must remain inside the chosen root, not a sibling with a
+        # common string prefix. Invalid saves must not create directories.
+        for bad in ("../escape/clip", os.path.join(volume, "latents-other/clip")):
+            try:
+                saver.save(prevA, bad, 1, storage_root=root)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError("save escaped root: %r" % bad)
+            try:
+                fresh.load(bad, 1, storage_root=root)
+            except FileNotFoundError:
+                pass
+            else:
+                raise AssertionError("load escaped root: %r" % bad)
+        assert not os.path.exists(os.path.join(volume, "escape"))
+        assert not os.path.exists(os.path.join(volume, "latents-other"))
+        for invalid_root in ("relative/path", 123, 0, False):
+            try:
+                saver.save(prevA, "story_01/clip", 1, storage_root=invalid_root)
+            except ValueError as e:
+                assert "storage_root" in str(e), str(e)
+            else:
+                raise AssertionError("invalid root accepted")
+        # A symlink cannot extend the selected root to unrelated files.
+        if hasattr(os, "symlink"):
+            link = os.path.join(root, "escape")
+            try:
+                os.symlink(other_root, link, target_is_directory=True)
+            except OSError:  # Windows may require extra symlink privileges
+                pass
+            else:
+                try:
+                    saver.save(prevA, "escape/clip", 1, storage_root=root)
+                except ValueError:
+                    pass
+                else:
+                    raise AssertionError("save followed escaping symlink")
+                assert nodes._clear_clip_slots("escape", root) == 0
+                assert not nodes._clip_slot_exists("escape/story_01", 1, root)
+        # An explicit root under output still gets a valid /view locator.
+        inner_root = os.path.join(outdir, "custom_inside")
+        inner = saver.save(prevA, "clip", 1, storage_root=inner_root)
+        assert inner["ui"]["latents"][0]["subfolder"] == "custom_inside"
+        # Route requests from Chain use the same root, with CSRF unchanged.
+        import asyncio
+        routes = {}
+        class Routes:
+            def post(self, route):
+                def register(handler):
+                    routes[route] = handler
+                    return handler
+                return register
+        server = types.ModuleType("server")
+        server.PromptServer = types.SimpleNamespace(
+            instance=types.SimpleNamespace(routes=Routes()))
+        sys.modules["server"] = server
+        aiohttp = types.ModuleType("aiohttp")
+        aiohttp.web = types.SimpleNamespace(json_response=lambda data, status=200:
+                                           types.SimpleNamespace(data=data,
+                                                                 status=status))
+        sys.modules["aiohttp"] = aiohttp
+        nodes.register_chain_routes()
+        class Request:
+            method = "POST"
+            def __init__(self, data, cross_site=False):
+                self.data = data
+                self.headers = {"Host": "localhost:8188",
+                                "Origin": "http://localhost:8188"}
+                if cross_site:
+                    self.headers["Sec-Fetch-Site"] = "cross-site"
+            async def json(self):
+                return self.data
+        async def check_routes():
+            body = {"latent_path": "story_01", "storage_root": root,
+                    "folder": "output", "clip_index": 1}
+            exists = routes["/h3_motion_context/slot_exists"]
+            clear = routes["/h3_motion_context/clear_latents"]
+            assert (await exists(Request(body))).data == {"exists": True}
+            assert (await clear(Request(body, cross_site=True))).status == 403
+            assert os.path.exists(path)
+            bad = dict(body, storage_root="relative/path")
+            assert (await exists(Request(bad))).status == 400
+            assert (await clear(Request(bad))).status == 400
+            assert (await clear(Request(dict(body, folder="input")))).data == \
+                {"removed": 0}
+            keep = os.path.join(root, "story_01", "hero_take.safetensors")
+            open(keep, "wb").close()
+            assert (await clear(Request(body))).data == {"removed": 2}
+            assert not os.path.exists(path) and os.path.exists(keep)
+            # Another chain/root and normal ComfyUI output are untouched.
+            assert os.path.exists(os.path.join(other_root, "story_01",
+                                               "clip_00001.safetensors"))
+            assert os.path.exists(inner["result"][0])
+            assert (await exists(Request(body))).data == {"exists": False}
+        asyncio.run(check_routes())
+    print("storage root: AV roundtrip, cache/re-rolls, legacy defaults, "
+          "contained paths, history and Chain routes passed")
 
     print("smoke test passed")
 
