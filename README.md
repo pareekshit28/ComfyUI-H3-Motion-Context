@@ -1,8 +1,9 @@
 # H3 Motion Context
 
 This fork of [NikoDemon80/ComfyUI-H3-Motion-Context](https://github.com/NikoDemon80/ComfyUI-H3-Motion-Context)
-adds an optional `storage_root` field to H3 Save/Load Latent for persistent
-storage such as Runpod Network Volumes. Existing workflows keep their defaults.
+adds `clip_id` filename addressing and an optional `storage_root` to H3
+Save/Load Latent for persistent storage such as Runpod Network Volumes.
+Existing workflows keep their defaults.
 
 Chain MiniMax H3 clips so motion and sound keep going across the cut.
 
@@ -116,6 +117,77 @@ this run:   SamplerCustomAdvanced -> H3 Motion Context Save Latent
 next run:   H3 Motion Context Load Latent -> context_latent
 ```
 
+#### Clip IDs / filenames (recommended for Serverless)
+
+Set **clip_id** on Save to your new clip's UUID. In the next job, pass that
+same UUID as **clip_id** on Load. Set the same **storage_root** on both nodes.
+
+For example, `storage_root: /runpod-volume/h3_latents` and
+`clip_id: 414f844c-41fd-4ca5-a5e3-b7381577d346` save/load exactly:
+
+```text
+/runpod-volume/h3_latents/414f844c-41fd-4ca5-a5e3-b7381577d346.safetensors
+```
+
+| Run | Load `clip_id` | Save `clip_id` |
+|---|---|---|
+| First clip | Empty (leave `clip_index` at its default 0) | New UUID A |
+| Second clip | UUID A | New UUID B |
+| Third clip | UUID B | New UUID C |
+
+With a nonempty `clip_id`, Save ignores `filename_prefix` and `clip_index`;
+Load ignores `latent_path` and `clip_index`. A named load works even when
+the index is 0. API workflows can omit all those legacy addressing fields.
+For example, these node inputs save a clip and load it in the next run:
+
+```json
+{
+  "159": {
+    "class_type": "MiniMaxH3MotionContextSaveLatent",
+    "inputs": {
+      "latent": ["125", 0],
+      "storage_root": "/runpod-volume/h3_latents",
+      "clip_id": "414f844c-41fd-4ca5-a5e3-b7381577d346"
+    }
+  }
+}
+```
+
+```json
+{
+  "158": {
+    "class_type": "MiniMaxH3MotionContextLoadLatent",
+    "inputs": {
+      "storage_root": "/runpod-volume/h3_latents",
+      "clip_id": "414f844c-41fd-4ca5-a5e3-b7381577d346"
+    }
+  }
+}
+```
+
+These are node fragments to put into their respective complete workflows;
+`125` is the sampler in the save example. For the first run, omit Load's
+`clip_id` or send an empty string, keeping the default index 0. A nonempty
+ID that has not been saved raises an error instead of silently dropping
+continuity. Save the next clip under a **new UUID**; intentionally reusing
+an ID overwrites that one file for a re-roll.
+
+You may also supply the complete filename, such as
+`414f844c-41fd-4ca5-a5e3-b7381577d346.safetensors`; the extension is not
+appended twice. IDs must be single filenames starting with a letter or
+number and using letters, numbers, dots, underscores or hyphens. Put
+project subfolders in `storage_root`, not in the clip ID. IDs are supplied
+by your caller; these nodes do not generate UUIDs automatically.
+
+The indexed **Approve / Chain / Reset / Clear latents** controls are
+disabled when either node has a clip ID. They cannot choose the next UUID
+and would otherwise re-save the same ID repeatedly. Set the next IDs in
+your API job, or use **Run/Re-roll** for a single UI run. UUID files are
+not removed by the numbered Clear operation. Both video and audio remain
+in each safetensors file.
+
+#### Legacy numbered chains
+
 Both have a `clip_index` and the numbers mean what they say. On Load, the
 clip you're continuing FROM. On Save, the clip this one IS. First clip:
 Load 0, Save 1. Making clip 2 from clip 1: Load 1, Save 2.
@@ -203,7 +275,9 @@ to keep ComfyUI's normal directories. Set an absolute path to store only
 the H3 latent files elsewhere, without launch arguments, symlinks, or
 changing where ComfyUI saves videos and images.
 
-For a Runpod Network Volume mounted at `/runpod-volume`, set:
+For a Runpod Network Volume mounted at `/runpod-volume`, the filename
+workflow above needs just the root and clip IDs. The following settings
+are for legacy numbered chains:
 
 | Node | Setting | Value |
 |---|---|---|
@@ -225,7 +299,7 @@ Save creates missing directories and writes both video and audio to
 The next job can load it on any worker mounting the **same volume**. Wait
 until the previous job finishes saving before submitting its continuation.
 Give each chain its own subfolder; concurrent jobs must not overwrite the
-same clip slot. The volume must be mounted and writable before generation.
+same clip slot or clip ID. The volume must be mounted and writable before generation.
 
 The root must be absolute. `filename_prefix` and `latent_path` are relative
 to it, or may be absolute paths already inside it. Parent traversal and

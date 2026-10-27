@@ -8,7 +8,20 @@ rejected any keyframe anchor other than the first or last frame. That
 landed in ComfyUI 0.34.0. Every release through 0.33.4 has the older
 layout. Each entry below says which of the two it works with.
 
-## Unreleased - fork: configurable latent storage
+## Unreleased - fork: clip IDs and configurable latent storage
+
+- Save/Load Latent accept `clip_id`: save a UUID or filename as exactly
+  `<clip_id>.safetensors` under `storage_root`, then load that same ID in
+  the next run. The extension may be included; no index suffix is added.
+- Nonempty IDs override legacy prefix/path/index fields. A named load
+  works with index 0; API jobs can omit the old addressing inputs entirely.
+  Empty IDs preserve numbered workflows and the original widget order.
+- Reusing an ID overwrites that one file. Missing IDs fail explicitly;
+  paths or traversal strings are rejected as IDs.
+- Chain's numbered automation and Clear controls are guarded in filename
+  mode. Run/Re-roll remains available for a single caller-addressed job.
+- Added CPU coverage for UUID and filename roundtrips, minimal API calls,
+  index override, cache invalidation, missing IDs and parallel distinct IDs.
 
 - Save/Load Latent gain an optional, trailing `storage_root` field for an
   absolute storage directory such as `/runpod-volume/h3_latents`. Blank

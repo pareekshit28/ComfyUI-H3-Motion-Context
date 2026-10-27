@@ -91,7 +91,8 @@ function findPair(ctrl) {
 // driven.
 function syncRefines(pair) {
   if (!pair || !Array.isArray(pair.refines)) return;
-  const index = readClip(pair.load);
+  const index = String(widgetValue(pair.load, "clip_id") || "").trim()
+    ? 1 : readClip(pair.load);
   for (const node of pair.refines) writeClip(node, index);
 }
 
@@ -117,7 +118,13 @@ function loadStorage(pair) {
     latent_path: loadPath(pair),
     storage_root: widgetValue(pair.load, "storage_root") || "",
     folder: widgetValue(pair.load, "folder") || "output",
+    clip_id: widgetValue(pair.load, "clip_id") || "",
   };
+}
+
+function usesClipIds(pair) {
+  return [pair?.load, pair?.save].some((node) =>
+    String(widgetValue(node, "clip_id") || "").trim().length > 0);
 }
 
 async function firstClipExists(pair) {
@@ -136,6 +143,7 @@ async function firstClipExists(pair) {
 }
 
 async function clearLatents(pair) {
+  if (usesClipIds(pair)) return 0;
   try {
     const r = await api.fetchApi("/h3_motion_context/clear_latents", {
       method: "POST",
@@ -201,7 +209,11 @@ function paint(ctrl) {
   const a = readClip(pair.load);
   const b = readClip(pair.save);
   const left = ctrl._h3mc.remaining | 0;
-  if (ctrl._h3mc.chaining) {
+  const named = usesClipIds(pair);
+  for (const button of ctrl._h3mc.indexedButtons || []) button.disabled = named;
+  if (named) {
+    meta.textContent = "Clip IDs: set the next IDs, then Run/Re-roll.";
+  } else if (ctrl._h3mc.chaining) {
     meta.textContent = left
       ? `Chaining  Load ${a} / Save ${b}  ·  ${left} left`
       : `Chaining  Load ${a} / Save ${b}`;
@@ -212,6 +224,7 @@ function paint(ctrl) {
   if (chainBtn) {
     chainBtn.textContent = ctrl._h3mc.chaining ? "Stop" : "Chain";
     chainBtn.classList.toggle("on", !!ctrl._h3mc.chaining);
+    chainBtn.disabled = named && !ctrl._h3mc.chaining;
   }
 }
 
@@ -229,7 +242,7 @@ function stopChain(ctrl) {
 
 function advance(ctrl) {
   const pair = findPair(ctrl);
-  if (!pair) return false;
+  if (!pair || usesClipIds(pair)) return false;
   const load = readClip(pair.load) + 1;
   let save = readClip(pair.save) + 1;
   if (save < 1) save = 1;
@@ -243,7 +256,7 @@ function advance(ctrl) {
 
 function resetFirst(ctrl) {
   const pair = findPair(ctrl);
-  if (!pair) return false;
+  if (!pair || usesClipIds(pair)) return false;
   writeClip(pair.load, 0);
   writeClip(pair.save, 1);
   syncRefines(pair);
@@ -254,7 +267,7 @@ function resetFirst(ctrl) {
 
 async function startChain(ctrl) {
   const pair = findPair(ctrl);
-  if (!pair) return false;
+  if (!pair || usesClipIds(pair)) return false;
   const load = readClip(pair.load);
   const save = readClip(pair.save);
   const atFirst = load === 0 && save <= 1;
@@ -270,6 +283,7 @@ async function startChain(ctrl) {
 async function queueOnce(ctrl) {
   const pair = findPair(ctrl);
   if (!pair) return;
+  syncRefines(pair);
   ctrl._h3mc.awaiting = true;
   live = ctrl;
   await app.queuePrompt(0, 1);
@@ -312,6 +326,26 @@ api.addEventListener("execution_interrupted", () => onPromptDone(false));
 app.registerExtension({
   name: "h3_motion_context.chain",
   async beforeRegisterNodeDef(nodeType, nodeData) {
+    if (nodeData.name === LOAD || nodeData.name === SAVE) {
+      const onNodeCreated = nodeType.prototype.onNodeCreated;
+      nodeType.prototype.onNodeCreated = function () {
+        const r = onNodeCreated?.apply(this, arguments);
+        const node = this;
+        const id = node.widgets?.find((w) => w.name === "clip_id");
+        if (id) {
+          const callback = id.callback;
+          id.callback = function () {
+            const result = callback?.apply(this, arguments);
+            for (const ctrl of graphNodes(node.graph || app.graph)) {
+              if (ctrl.comfyClass === CHAIN) paint(ctrl);
+            }
+            return result;
+          };
+        }
+        return r;
+      };
+      return;
+    }
     if (nodeData.name !== CHAIN) return;
     const onNodeCreated = nodeType.prototype.onNodeCreated;
     nodeType.prototype.onNodeCreated = function () {
@@ -349,7 +383,8 @@ app.registerExtension({
       root.append(row, row2, row3, meta);
       swallow(root);
       this.addDOMWidget("h3mc_chain", "CHAIN", root, { serialize: false });
-      this._h3mc = { chaining: false, awaiting: false, remaining: 0, meta, chainBtn };
+      this._h3mc = { chaining: false, awaiting: false, remaining: 0, meta, chainBtn,
+                     indexedButtons: [approve, resetBtn, clearBtn] };
       approve.onclick = async (e) => {
         e.stopPropagation();
         if (this._h3mc.awaiting) return;
@@ -370,7 +405,8 @@ app.registerExtension({
           return;
         }
         if (this._h3mc.awaiting) return;
-        if (!findPair(this)) {
+        const pair = findPair(this);
+        if (!pair || usesClipIds(pair)) {
           paint(this);
           return;
         }
@@ -410,6 +446,7 @@ app.registerExtension({
       const r = onConfigure?.apply(this, arguments);
       wireSegments(this);
       coerceSegments(this);
+      paint(this);
       return r;
     };
   },

@@ -752,15 +752,19 @@ def main():
         raise AssertionError("default folder read from input/")
     # the new widget is optional and last, so saved graphs keep positions
     it = nodes.MiniMaxH3MotionContextLoadLatent.INPUT_TYPES()
-    assert list(it["required"]) == ["latent_path", "clip_index"]
-    assert list(it["optional"]) == ["stock_format", "folder", "storage_root"]
+    assert list(it["required"]) == []
+    assert list(it["optional"]) == ["latent_path", "clip_index", "stock_format",
+                                   "folder", "storage_root", "clip_id"]
     assert it["optional"]["folder"][0] == ["output", "input"]
     assert it["optional"]["folder"][1]["default"] == "output"
     assert it["optional"]["storage_root"][1]["default"] == ""
     save_it = saver.INPUT_TYPES()
-    assert list(save_it["required"]) == ["latent", "filename_prefix", "clip_index"]
-    assert list(save_it["optional"]) == ["storage_root"]
+    assert list(save_it["required"]) == ["latent"]
+    assert list(save_it["optional"]) == ["filename_prefix", "clip_index",
+                                        "storage_root", "clip_id"]
     assert save_it["optional"]["storage_root"][1]["default"] == ""
+    assert save_it["optional"]["clip_id"][1]["default"] == ""
+    assert it["optional"]["clip_id"][1]["default"] == ""
     print("input folder: uploaded file loads, index 0 loads nothing, "
           "escapes and outside paths refused")
 
@@ -874,6 +878,101 @@ def main():
         inner_root = os.path.join(outdir, "custom_inside")
         inner = saver.save(prevA, "clip", 1, storage_root=inner_root)
         assert inner["ui"]["latents"][0]["subfolder"] == "custom_inside"
+
+        # Minimal API jobs use only clip_id + storage_root (and Save's
+        # latent). No dummy indices, prefixes or load paths are needed.
+        import uuid
+        id_a, id_b = str(uuid.uuid4()), str(uuid.uuid4())
+        uuid_root = os.path.join(volume, "uuid_latents")
+        assert fresh.load(storage_root=uuid_root) == (None,)
+        named_a = saver.save(prevA, storage_root=uuid_root, clip_id=id_a)
+        named_b = saver.save(prevB1, storage_root=uuid_root, clip_id=id_b)
+        uuid_path = os.path.join(uuid_root, id_a + ".safetensors")
+        assert _same_file(named_a["result"][0], uuid_path)
+        assert named_a["ui"] == {"latent_paths": [uuid_path]}
+        assert not os.path.exists(os.path.join(uuid_root, "h3_context"))
+        # A fresh Load instance continues from A while the next job saves B.
+        by_id = nodes.MiniMaxH3MotionContextLoadLatent()
+        (uuid_a,) = by_id.load(storage_root=uuid_root, clip_id=id_a)
+        (uuid_b,) = by_id.load(storage_root=uuid_root, clip_id=id_b)
+        for got, want in zip(uuid_a["samples"], prevA["samples"].parts):
+            np.testing.assert_array_equal(got.a, want.a)
+        for got, want in zip(uuid_b["samples"], prevB1["samples"].parts):
+            np.testing.assert_array_equal(got.a, want.a)
+        assert nodes._clip_slot_exists("ignored", 0, uuid_root, clip_id=id_a)
+        assert nodes._clear_clip_slots(".", uuid_root, clip_id=id_a) == 0
+        assert nodes._clear_clip_slots(".", uuid_root) == 0  # UUIDs aren't slots
+        # An exact filename works, and .safetensors is never appended twice.
+        full_id = id_a + ".safetensors"
+        same = saver.save(prevA, storage_root=uuid_root, clip_id=full_id)
+        assert same["result"][0] == uuid_path
+        (by_name,) = by_id.load(storage_root=uuid_root, clip_id=full_id,
+                                folder="input", stock_format=True)
+        assert isinstance(by_name["samples"], Nested)
+        # Explicit IDs take precedence over all legacy addressing widgets.
+        same = saver.save(prevA, "../unused_prefix", 99,
+                           storage_root=uuid_root, clip_id=id_a)
+        assert same["result"][0] == uuid_path
+        (ignored_old,) = by_id.load("../unused_path", 0,
+                                    storage_root=uuid_root, clip_id=id_a)
+        np.testing.assert_array_equal(ignored_old["samples"][1].a,
+                                      uuid_a["samples"][1].a)
+        # Reusing an ID overwrites that one file and invalidates its cache.
+        key_a = by_id.IS_CHANGED(storage_root=uuid_root, clip_id=id_a)
+        assert isinstance(key_a, str) and key_a != "disabled"
+        assert key_a != by_id.IS_CHANGED(storage_root=uuid_root, clip_id=id_b)
+        replacement = saver.save(prevB1, storage_root=uuid_root, clip_id=id_a)
+        assert replacement["result"][0] == uuid_path
+        t = os.stat(uuid_path).st_mtime_ns
+        os.utime(uuid_path, ns=(t, t + 1000000000))
+        assert by_id.IS_CHANGED(storage_root=uuid_root, clip_id=id_a) != key_a
+        (reroll,) = by_id.load(storage_root=uuid_root, clip_id=id_a)
+        np.testing.assert_array_equal(reroll["samples"][1].a,
+                                      prevB1["samples"].parts[1].a)
+        assert not os.path.exists(uuid_path + ".tmp")
+        # Missing named context must fail, even with the default index 0.
+        unknown = str(uuid.uuid4())
+        try:
+            by_id.load(storage_root=uuid_root, clip_id=unknown)
+        except FileNotFoundError as e:
+            assert unknown in str(e)
+        else:
+            raise AssertionError("missing clip_id silently disabled context")
+        unknown_key = by_id.IS_CHANGED(storage_root=uuid_root, clip_id=unknown)
+        assert unknown_key != unknown_key  # NaN: retry once the file appears
+        for bad_id in ("../escape", "/absolute", "a/b", "a\\b", ".", "..", 0):
+            for operation in (lambda: saver.save(prevA, storage_root=uuid_root,
+                                                  clip_id=bad_id),
+                              lambda: by_id.load(storage_root=uuid_root,
+                                                  clip_id=bad_id)):
+                try:
+                    operation()
+                except ValueError as e:
+                    assert "clip_id" in str(e), str(e)
+                else:
+                    raise AssertionError("invalid clip_id accepted: %r" % bad_id)
+        # Separate UUIDs can be saved by concurrent jobs without sharing a
+        # numbered counter or a temporary-file name.
+        from concurrent.futures import ThreadPoolExecutor
+        parallel_ids = [str(uuid.uuid4()), str(uuid.uuid4())]
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            futures = [pool.submit(saver.save, latent, storage_root=uuid_root,
+                                    clip_id=ident)
+                       for latent, ident in zip((prevA, prevB1), parallel_ids)]
+            for future in futures:
+                future.result()
+        for ident, want in zip(parallel_ids, (prevA, prevB1)):
+            (got,) = by_id.load(storage_root=uuid_root, clip_id=ident)
+            for stream, expected in zip(got["samples"], want["samples"].parts):
+                np.testing.assert_array_equal(stream.a, expected.a)
+        # Default ComfyUI output still reports a normal file locator.
+        local_named = saver.save(prevA, clip_id="local-named-clip")
+        assert local_named["ui"]["latents"][0] == {
+            "filename": "local-named-clip.safetensors", "subfolder": "",
+            "type": "output"}
+        print("clip IDs: UUID/filename roundtrip, minimal API inputs, ID priority, "
+              "rerolls/cache, parallel jobs and invalid IDs passed")
+
         # Route requests from Chain use the same root, with CSRF unchanged.
         import asyncio
         routes = {}
@@ -916,6 +1015,11 @@ def main():
             assert (await clear(Request(bad))).status == 400
             assert (await clear(Request(dict(body, folder="input")))).data == \
                 {"removed": 0}
+            named_body = dict(body, storage_root=uuid_root, clip_id=id_a,
+                              clip_index=0, latent_path="ignored")
+            assert (await exists(Request(named_body))).data == {"exists": True}
+            assert (await clear(Request(named_body))).data == {"removed": 0}
+            assert os.path.exists(uuid_path)
             keep = os.path.join(root, "story_01", "hero_take.safetensors")
             open(keep, "wb").close()
             assert (await clear(Request(body))).data == {"removed": 2}
