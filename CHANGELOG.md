@@ -8,6 +8,18 @@ rejected any keyframe anchor other than the first or last frame. That
 landed in ComfyUI 0.34.0. Every release through 0.33.4 has the older
 layout. Each entry below says which of the two it works with.
 
+## 0.7.2 — fork metadata (2026-10-27)
+
+- Give the fork the distinct package name `h3-motion-context-uuid` and
+  display name H3 Motion Context — UUID Fork.
+- Point homepage, repository and issue metadata at pareekshit28's fork;
+  retain the original author credit and license.
+- Remove the inherited upstream publisher identity. Registry publishing
+  requires the fork maintainer's own registered publisher ID.
+- Identify this fork and its UUID-capable runtime revision in the bundled
+  example workflow; document provenance fields for ComfyUI-to-API exports.
+- Runtime node IDs, sockets and generation behavior are unchanged.
+
 ## Unreleased - fork: clip IDs and configurable latent storage
 
 - Save/Load Latent accept `clip_id`: save a UUID or filename as exactly

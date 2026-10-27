@@ -1,4 +1,4 @@
-# H3 Motion Context
+# H3 Motion Context — UUID Fork
 
 This fork of [NikoDemon80/ComfyUI-H3-Motion-Context](https://github.com/NikoDemon80/ComfyUI-H3-Motion-Context)
 adds `clip_id` filename addressing and an optional `storage_root` to H3
@@ -52,6 +52,42 @@ whether a join is a real continuation or a convincing imitation.
 Audio was the harder half, and it's the more useful half, since H3
 generates picture and sound together. See "Why the audio needed work"
 below if you care how.
+
+## Fork identity and workflow exports
+
+This GitHub fork is `pareekshit28/ComfyUI-H3-Motion-Context`; its package name is
+`h3-motion-context-uuid`. The repository, homepage and issue links in
+`pyproject.toml` identify this fork. Original author attribution and the
+upstream license are retained.
+
+This fork is not published to Comfy Registry. `PublisherId` is deliberately
+empty; set your own registered publisher ID before publishing. Do not use
+the upstream publisher ID or the upstream `comfyui-h3-motion-context`
+registry ID for this fork.
+
+For exported workflows, set the properties of nodes supplied by this pack to:
+
+```json
+{
+  "aux_id": "pareekshit28/ComfyUI-H3-Motion-Context",
+  "ver": "<full commit SHA from this fork>"
+}
+```
+
+Remove the inherited upstream `cnr_id` from these nodes until this fork has
+its own published registry entry. Keep the existing node `type`, inputs,
+widgets and connections unchanged; this fork retains the upstream runtime
+node IDs for workflow compatibility. Apply the metadata to nodes inside
+subgraphs as well as top-level nodes. Old workflows can retain stale
+properties even after a different repository is installed, so inspect the
+export before uploading it.
+
+ComfyUI-to-API analyzes and searches for dependencies; these provenance
+fields identify the intended source but do not guarantee its selection.
+Review the generated Dockerfile and confirm that its clone URL points to
+this fork and its checkout uses a commit containing the UUID/storage-root
+changes. Do not retain the old upstream-only commit
+`518c083d11d80fa5920222ad89889924ee4401c9`.
 
 ## Install
 

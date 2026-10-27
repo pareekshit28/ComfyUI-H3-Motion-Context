@@ -1,13 +1,14 @@
 [project]
-name = "comfyui-h3-motion-context"
-description = "Clip chaining for MiniMax H3 in ComfyUI: pin the tail of the previous clip, picture and sound, so the next clip genuinely continues it. The picture is sliced out of the previous latent with no VAE round trip, and the pinned audio window ends at the join and reaches backwards, so the soundtrack continues rather than restarts. ComfyUI is not modified. Node ids MiniMaxH3MotionContext, MiniMaxH3MotionContextTrim, MiniMaxH3MotionContextSaveLatent, MiniMaxH3MotionContextLoadLatent, MiniMaxH3MotionContextChain, MiniMaxH3MotionContextSeamProbe, MiniMaxH3RefineBlend, MiniMaxH3JoinMatch, MiniMaxH3SigmasTail."
-version = "0.7.1"
+name = "h3-motion-context-uuid"
+description = "UUID-addressed persistent latent storage and clip chaining for MiniMax H3 in ComfyUI: pin the tail of the previous clip, picture and sound, so the next clip genuinely continues it. The picture is sliced out of the previous latent with no VAE round trip, and the pinned audio window ends at the join and reaches backwards, so the soundtrack continues rather than restarts. ComfyUI is not modified. Node ids MiniMaxH3MotionContext, MiniMaxH3MotionContextTrim, MiniMaxH3MotionContextSaveLatent, MiniMaxH3MotionContextLoadLatent, MiniMaxH3MotionContextChain, MiniMaxH3MotionContextSeamProbe, MiniMaxH3RefineBlend, MiniMaxH3JoinMatch, MiniMaxH3SigmasTail."
+version = "0.7.2"
 license = { file = "LICENSE" }
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [
     { name = "NikoDemon80", email = "262659861+NikoDemon80@users.noreply.github.com" },
 ]
+maintainers = [{ name = "pareekshit28" }]
 keywords = ["comfyui", "minimax-h3", "video-generation", "audio", "clip-chaining", "video-continuation"]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -23,10 +24,12 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/NikoDemon80/ComfyUI-H3-Motion-Context"
-Repository = "https://github.com/NikoDemon80/ComfyUI-H3-Motion-Context"
-Issues = "https://github.com/NikoDemon80/ComfyUI-H3-Motion-Context/issues"
+Homepage = "https://github.com/pareekshit28/ComfyUI-H3-Motion-Context"
+Repository = "https://github.com/pareekshit28/ComfyUI-H3-Motion-Context"
+Issues = "https://github.com/pareekshit28/ComfyUI-H3-Motion-Context/issues"
 
 [tool.comfy]
-PublisherId = "nikodemon80"
-DisplayName = "H3 Motion Context"
+# Fill this with your own Comfy Registry publisher ID before publishing.
+# The fork is distributed directly from GitHub until then.
+PublisherId = ""
+DisplayName = "H3 Motion Context — UUID Fork"

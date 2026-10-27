@@ -169,7 +169,9 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "MiniMaxH3SigmasTail"
+        "Node name for S&R": "MiniMaxH3SigmasTail",
+        "aux_id": "pareekshit28/ComfyUI-H3-Motion-Context",
+        "ver": "ce783bb1d407debeecbc8d840cbb4d8584f0473a"
       },
       "widgets_values": [
         3,
@@ -261,7 +263,9 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "MiniMaxH3MotionContextTrim"
+        "Node name for S&R": "MiniMaxH3MotionContextTrim",
+        "aux_id": "pareekshit28/ComfyUI-H3-Motion-Context",
+        "ver": "ce783bb1d407debeecbc8d840cbb4d8584f0473a"
       },
       "widgets_values": [
         0,
@@ -302,7 +306,9 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "MiniMaxH3MotionContextLoadLatent"
+        "Node name for S&R": "MiniMaxH3MotionContextLoadLatent",
+        "aux_id": "pareekshit28/ComfyUI-H3-Motion-Context",
+        "ver": "ce783bb1d407debeecbc8d840cbb4d8584f0473a"
       },
       "widgets_values": [
         "h3_context",
@@ -346,7 +352,9 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "MiniMaxH3MotionContextSaveLatent"
+        "Node name for S&R": "MiniMaxH3MotionContextSaveLatent",
+        "aux_id": "pareekshit28/ComfyUI-H3-Motion-Context",
+        "ver": "ce783bb1d407debeecbc8d840cbb4d8584f0473a"
       },
       "widgets_values": [
         "h3_context/clip",
@@ -376,7 +384,9 @@
       "inputs": [],
       "outputs": [],
       "properties": {
-        "Node name for S&R": "MiniMaxH3MotionContextChain"
+        "Node name for S&R": "MiniMaxH3MotionContextChain",
+        "aux_id": "pareekshit28/ComfyUI-H3-Motion-Context",
+        "ver": "ce783bb1d407debeecbc8d840cbb4d8584f0473a"
       },
       "widgets_values": [
         5,
@@ -434,7 +444,9 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "MiniMaxH3RefineBlend"
+        "Node name for S&R": "MiniMaxH3RefineBlend",
+        "aux_id": "pareekshit28/ComfyUI-H3-Motion-Context",
+        "ver": "ce783bb1d407debeecbc8d840cbb4d8584f0473a"
       },
       "widgets_values": [
         22,
@@ -499,7 +511,9 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "MiniMaxH3JoinMatch"
+        "Node name for S&R": "MiniMaxH3JoinMatch",
+        "aux_id": "pareekshit28/ComfyUI-H3-Motion-Context",
+        "ver": "ce783bb1d407debeecbc8d840cbb4d8584f0473a"
       },
       "widgets_values": [
         1,
@@ -598,7 +612,9 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "MiniMaxH3MotionContext"
+        "Node name for S&R": "MiniMaxH3MotionContext",
+        "aux_id": "pareekshit28/ComfyUI-H3-Motion-Context",
+        "ver": "ce783bb1d407debeecbc8d840cbb4d8584f0473a"
       },
       "widgets_values": [
         "22",
